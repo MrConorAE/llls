@@ -36,14 +36,17 @@ impl Store {
     pub fn request_path(&self) -> PathBuf { self.dir.join("request.json") }
     pub fn draft_path(&self) -> PathBuf { self.dir.join("draft.json") }
     pub fn review_path(&self) -> PathBuf { self.dir.join("review.json") }
+    pub fn inbox_path(&self) -> PathBuf { self.dir.join("inbox.json") }
 
     pub fn read_request(&self) -> Option<Request> { read_json(&self.request_path()) }
     pub fn read_draft(&self) -> Option<Draft> { read_json(&self.draft_path()) }
     pub fn read_review(&self) -> Option<Review> { read_json(&self.review_path()) }
+    pub fn read_inbox(&self) -> Option<Review> { read_json(&self.inbox_path()) }
 
     pub fn write_request(&self, r: &Request) -> Result<()> { write_json(&self.request_path(), r) }
     pub fn write_draft(&self, d: &Draft) -> Result<()> { write_json(&self.draft_path(), d) }
     pub fn write_review(&self, r: &Review) -> Result<()> { write_json(&self.review_path(), r) }
+    pub fn write_inbox(&self, r: &Review) -> Result<()> { write_json(&self.inbox_path(), r) }
 
     /// A review only satisfies a request whose `id` it carries.
     pub fn matching_review(&self, id: &str) -> Option<Review> {
@@ -59,6 +62,7 @@ impl Store {
         self.clear_request_draft();
         Self::remove(&self.review_path());
     }
+    pub fn clear_inbox(&self) { Self::remove(&self.inbox_path()); }
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(p: &Path) -> Option<T> {
@@ -140,6 +144,20 @@ mod tests {
         assert!(!s.request_path().exists());
         assert!(!s.draft_path().exists());
         assert!(s.review_path().exists());
+    }
+
+    #[test]
+    fn inbox_round_trips_and_clears() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = store_in(tmp.path());
+        let r = crate::types::Review {
+            id: "adhoc-1".into(), verdict: crate::types::Verdict::Comment,
+            summary: None, comments: vec![],
+        };
+        s.write_inbox(&r).unwrap();
+        assert_eq!(s.read_inbox().unwrap(), r);
+        s.clear_inbox();
+        assert!(s.read_inbox().is_none());
     }
 
     #[test]
