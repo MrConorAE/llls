@@ -128,13 +128,11 @@ impl Backend {
     }
 
     async fn open_input(&self, hint: &str, prefill: &str, pending: PendingInput) {
-        {
-            let s = self.state.read().await;
-            if s.pending_input.is_some() {
-                self.client.show_message(MessageType::WARNING,
-                    "A comment buffer is already open. Finish it (save & close) first.").await;
-                return;
-            }
+        let already_pending = self.state.read().await.pending_input.is_some();
+        if already_pending {
+            self.client.show_message(MessageType::WARNING,
+                "A comment buffer is already open. Finish it (save & close) first.").await;
+            return;
         }
         let body = format!("{hint}{prefill}");
         if std::fs::write(&pending.buffer, body).is_err() {
