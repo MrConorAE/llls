@@ -76,6 +76,7 @@ pub fn code_actions(
     is_requested: bool,
     reviewed: bool,
     comment_at_line: bool,
+    has_draft: bool,
     has_request: bool,
 ) -> Vec<CodeActionOrCommand> {
     let mut a = Vec::new();
@@ -88,9 +89,11 @@ pub fn code_actions(
         let label = if reviewed { "Mark file unreviewed" } else { "Mark file reviewed" };
         a.push(cmd(label, "llls.markReviewed", serde_json::json!({ "file": file })));
     }
-    if has_request {
+    if has_request || has_draft {
         a.push(cmd("Send review to Claude", "llls.submitReview", serde_json::json!({})));
-        a.push(cmd("Decline review request", "llls.dismissReview", serde_json::json!({})));
+        a.push(cmd("Discard review", "llls.dismissReview", serde_json::json!({})));
+    }
+    if has_request {
         a.push(cmd("Next file to review", "llls.nextFile", serde_json::json!({})));
     }
     a
@@ -150,12 +153,17 @@ mod tests {
 
     #[test]
     fn code_actions_offer_edit_delete_only_when_comment_present() {
-        let none = code_actions("a.rs", 1, true, false, false, true);
+        let none = code_actions("a.rs", 1, true, false, false, true, true);
         assert!(none.iter().all(|a| !title(a).contains("Edit")));
-        let some = code_actions("a.rs", 1, true, false, true, true);
+        let some = code_actions("a.rs", 1, true, false, true, true, true);
         assert!(some.iter().any(|a| title(a).contains("Edit agent note")));
         assert!(some.iter().any(|a| title(a).contains("Send review to Claude")));
         assert!(some.iter().any(|a| title(a).contains("Next file to review")));
+
+        // ad-hoc: no request but a draft present -> Send/Discard offered, no Next
+        let adhoc = code_actions("a.rs", 1, false, false, false, true, false);
+        assert!(adhoc.iter().any(|a| title(a).contains("Send review to Claude")));
+        assert!(adhoc.iter().all(|a| !title(a).contains("Next file to review")));
     }
 
     #[test]

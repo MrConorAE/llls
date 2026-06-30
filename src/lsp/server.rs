@@ -61,14 +61,24 @@ async fn reload_and_publish(client: &Client, state: &Shared) {
         let new_id = disk_request.as_ref().map(|r| r.id.clone());
         let cur_id = s.request.as_ref().map(|r| r.id.clone());
         if new_id != cur_id {
+            // Defer adopting a new request while an ad-hoc draft is open.
+            if s.request.is_none() && !s.draft.comments.is_empty() && disk_request.is_some() {
+                if !s.warned_pending_request {
+                    s.warned_pending_request = true;
+                    drop(s);
+                    client.show_message(MessageType::WARNING,
+                        "A request arrived while your ad-hoc notes are open — send or discard them first.").await;
+                    return;
+                }
+                return;
+            }
+            s.warned_pending_request = false;
             s.request = disk_request.clone();
             let id = new_id.clone().unwrap_or_default();
             s.draft = Draft { id: id.clone(), comments: vec![] };
             s.reviewed.clear();
             if let Some(d) = store.read_draft() {
-                if Some(&d.id) == new_id.as_ref() {
-                    s.draft = d;
-                }
+                if Some(&d.id) == new_id.as_ref() { s.draft = d; }
             }
         }
     }
@@ -207,37 +217,86 @@ impl Backend {
     }
 
     async fn submit_review(&self) {
-        let n = self.state.read().await.draft.comments.len();
+        let (has_request, n) = {
+            let s = self.state.read().await;
+            (s.request.is_some(), s.draft.comments.len())
+        };
+        if !has_request {
+            if n == 0 {
+                self.client.show_message(MessageType::WARNING, "No notes to send.").await;
+                return;
+            }
+            self.finalize_adhoc().await;
+            return;
+        }
         let prompt = match n {
             0 => "Review has no notes. Which verdict?".to_string(),
             1 => "Review has 1 note. Which verdict?".to_string(),
             _ => format!("Review has {n} notes. Which verdict?"),
         };
-        let verdict = self
-            .client
-            .show_message_request(
-                MessageType::INFO,
-                prompt,
-                Some(vec![
-                    MessageActionItem { title: "Approve".into(), properties: Default::default() },
-                    MessageActionItem { title: "Request changes".into(), properties: Default::default() },
-                    MessageActionItem { title: "Comment".into(), properties: Default::default() },
-                ]),
-            )
-            .await
-            .ok()
-            .flatten();
-
+        let verdict = self.client.show_message_request(
+            MessageType::INFO, prompt,
+            Some(vec![
+                MessageActionItem { title: "Approve".into(), properties: Default::default() },
+                MessageActionItem { title: "Request changes".into(), properties: Default::default() },
+                MessageActionItem { title: "Comment".into(), properties: Default::default() },
+            ]),
+        ).await.ok().flatten();
         let verdict = match verdict.as_ref().map(|a| a.title.as_str()) {
             Some("Approve") => Verdict::Approve,
             Some("Request changes") => Verdict::RequestChanges,
             Some("Comment") => Verdict::Comment,
-            _ => return, // dismissed dialog = no-op
+            _ => return,
         };
         self.finalize(verdict).await;
     }
 
+    /// Ad-hoc (user-initiated): no agent request. Write the notes to inbox.json
+    /// as a `comment` verdict, clear the draft, and tell the developer.
+    async fn finalize_adhoc(&self) {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let (dir, comments) = {
+            let s = self.state.read().await;
+            (s.llls_dir.clone(), s.draft.comments.clone())
+        };
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let review = crate::types::Review {
+            id: format!("adhoc-{nanos}"),
+            verdict: Verdict::Comment,
+            summary: None,
+            comments,
+        };
+        let store = Backend::store(&dir);
+        if store.read_request().is_some() {
+            self.client.show_message(MessageType::WARNING,
+                "A review request just arrived — its markers will appear shortly; \
+                 run 'Send review to Claude' again to respond with a verdict.").await;
+            return; // leave the draft intact; the request will activate on the next reload
+        }
+        if store.write_inbox(&review).is_err() {
+            self.client.show_message(MessageType::ERROR, "Could not write inbox.json.").await;
+            return;
+        }
+        store.clear_draft(); // removes draft.json only — never touches request.json
+        self.state.write().await.draft = Draft::default();
+        refresh_diagnostics(&self.client, &self.state).await;
+        self.client.show_message(MessageType::INFO,
+            "Review sent to Claude. Tell Claude to run `llls take-review`.").await;
+    }
+
     async fn dismiss_review(&self) {
+        let (has_request, dir) = {
+            let s = self.state.read().await;
+            (s.request.is_some(), s.llls_dir.clone())
+        };
+        if !has_request {
+            // Ad-hoc draft: discard the notes locally (no inbox write).
+            Backend::store(&dir).clear_draft();
+            self.state.write().await.draft = Draft::default();
+            refresh_diagnostics(&self.client, &self.state).await;
+            self.client.show_message(MessageType::INFO, "Review notes discarded.").await;
+            return;
+        }
         self.finalize(Verdict::Dismissed).await;
     }
 
@@ -414,8 +473,9 @@ impl LanguageServer for Backend {
         let is_requested = s.request.as_ref().map(|r| r.files.iter().any(|t| t.path == file)).unwrap_or(false);
         let reviewed = s.reviewed.contains(&file);
         let comment_at_line = s.comment_index_at(&file, line1).is_some();
+        let has_draft = !s.draft.comments.is_empty();
         let has_request = s.request.is_some();
-        Ok(Some(convert::code_actions(&file, line1, is_requested, reviewed, comment_at_line, has_request)))
+        Ok(Some(convert::code_actions(&file, line1, is_requested, reviewed, comment_at_line, has_draft, has_request)))
     }
 
     async fn execute_command(&self, params: ExecuteCommandParams) -> LspResult<Option<Value>> {

@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use llls::{await_review, lsp};
+use llls::{await_review, lsp, take_review};
 
 #[derive(Parser)]
 #[command(name = "llls", about = "LLM Language Server — an editor-driven review loop")]
@@ -15,8 +15,12 @@ enum Cmd {
     /// Request a review of some files and block until it is submitted.
     AwaitReview {
         /// Files (comma-separated), each optionally with `:LINE` or `:START-END`.
-        #[arg(long = "for", value_delimiter = ',', required = true)]
+        #[arg(long = "for", value_delimiter = ',')]
         files: Vec<String>,
+        /// Also review git-changed files. Bare = working tree vs HEAD;
+        /// `--changed <ref>` = this branch's diff since <ref> (three-dot).
+        #[arg(long, num_args = 0..=1, default_missing_value = "")]
+        changed: Option<String>,
         /// A short note shown to the reviewer.
         #[arg(long, default_value = "")]
         message: String,
@@ -30,6 +34,11 @@ enum Cmd {
         #[arg(long)]
         timeout: Option<u64>,
     },
+    /// Print and clear any review the developer pushed (ad-hoc), then exit.
+    TakeReview {
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -39,8 +48,12 @@ fn main() -> anyhow::Result<()> {
             lsp::run();
             Ok(())
         }
-        Cmd::AwaitReview { files, message, round, json, timeout } => {
-            let code = await_review::run(await_review::Args { files, message, round, json, timeout })?;
+        Cmd::AwaitReview { files, changed, message, round, json, timeout } => {
+            let code = await_review::run(await_review::Args { files, changed, message, round, json, timeout })?;
+            std::process::exit(code);
+        }
+        Cmd::TakeReview { json } => {
+            let code = take_review::run(json)?;
             std::process::exit(code);
         }
     }

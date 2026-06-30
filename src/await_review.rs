@@ -7,6 +7,7 @@ use crate::{render, watch};
 
 pub struct Args {
     pub files: Vec<String>,
+    pub changed: Option<String>,
     pub message: String,
     pub round: u32,
     pub json: bool,
@@ -30,21 +31,31 @@ pub fn run(args: Args) -> Result<i32> {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     let id = format!("r{}-{}", args.round, now.as_nanos());
 
-    let files = args
-        .files
-        .iter()
-        .map(|f| {
-            let mut t = parse_target(f);
-            t.path = repo_relative(&t.path, &repo_root);
-            t
-        })
-        .collect();
+    let mut targets: Vec<crate::types::FileTarget> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for f in &args.files {
+        let mut t = parse_target(f);
+        t.path = repo_relative(&t.path, &repo_root);
+        if seen.insert(t.path.clone()) { targets.push(t); }
+    }
+    if let Some(spec) = &args.changed {
+        let base = if spec.is_empty() { None } else { Some(spec.as_str()) };
+        for p in crate::changed::changed_files(&repo_root, base)? {
+            if seen.insert(p.clone()) {
+                targets.push(crate::types::FileTarget { path: p, line: None, range: None });
+            }
+        }
+    }
+    if targets.is_empty() {
+        eprintln!("llls: nothing to review (no --for files and --changed found no changes).");
+        return Ok(1);
+    }
 
     let request = Request {
         id: id.clone(),
         round: args.round,
         created_unix: now.as_secs(),
-        files,
+        files: targets,
         message: args.message,
     };
     store.write_request(&request)?;
