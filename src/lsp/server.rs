@@ -154,7 +154,7 @@ impl Backend {
         let line = Self::arg_u32(&args, "line");
         let (repo_root, buffer) = {
             let s = self.state.read().await;
-            (s.repo_root.clone(), std::env::temp_dir().join("llls-comment.md"))
+            (s.repo_root.clone(), s.llls_dir.join("comment.md"))
         };
         let context = read_line_context(&repo_root.join(&file), line);
         self.open_input(
@@ -167,15 +167,14 @@ impl Backend {
     async fn edit_comment(&self, args: Vec<Value>) {
         let file = Self::arg_str(&args, "file");
         let line = Self::arg_u32(&args, "line");
-        let (repo_root, buffer, prefill, idx, context) = {
+        let (buffer, prefill, idx, context) = {
             let s = self.state.read().await;
             let idx = s.comment_index_at(&file, line);
             let (prefill, context) = idx
                 .map(|i| (s.draft.comments[i].body.clone(), s.draft.comments[i].context.clone()))
                 .unwrap_or_default();
-            (s.repo_root.clone(), std::env::temp_dir().join("llls-comment.md"), prefill, idx, context)
+            (s.llls_dir.join("comment.md"), prefill, idx, context)
         };
-        let _ = repo_root;
         self.open_input(
             "# Edit comment — save & close to submit, empty to delete.\n",
             &prefill,

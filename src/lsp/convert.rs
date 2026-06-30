@@ -91,6 +91,7 @@ pub fn code_actions(
     if has_request {
         a.push(cmd("Submit review", "llls.submitReview", serde_json::json!({})));
         a.push(cmd("Discard review request", "llls.dismissReview", serde_json::json!({})));
+        a.push(cmd("Go to next unreviewed file", "llls.nextFile", serde_json::json!({})));
     }
     a
 }
@@ -154,6 +155,7 @@ mod tests {
         let some = code_actions("a.rs", 1, true, false, true, true);
         assert!(some.iter().any(|a| title(a).contains("Edit")));
         assert!(some.iter().any(|a| title(a).contains("Submit review")));
+        assert!(some.iter().any(|a| title(a).contains("Go to next unreviewed file")));
     }
 
     #[test]
