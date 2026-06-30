@@ -79,19 +79,19 @@ pub fn code_actions(
     has_request: bool,
 ) -> Vec<CodeActionOrCommand> {
     let mut a = Vec::new();
-    a.push(cmd("Add review comment", "llls.addComment", serde_json::json!({ "file": file, "line": line1 })));
+    a.push(cmd("Leave an agent note", "llls.addComment", serde_json::json!({ "file": file, "line": line1 })));
     if comment_at_line {
-        a.push(cmd("Edit comment", "llls.editComment", serde_json::json!({ "file": file, "line": line1 })));
-        a.push(cmd("Delete comment", "llls.deleteComment", serde_json::json!({ "file": file, "line": line1 })));
+        a.push(cmd("Edit agent note", "llls.editComment", serde_json::json!({ "file": file, "line": line1 })));
+        a.push(cmd("Delete agent note", "llls.deleteComment", serde_json::json!({ "file": file, "line": line1 })));
     }
     if is_requested {
         let label = if reviewed { "Mark file unreviewed" } else { "Mark file reviewed" };
         a.push(cmd(label, "llls.markReviewed", serde_json::json!({ "file": file })));
     }
     if has_request {
-        a.push(cmd("Submit review", "llls.submitReview", serde_json::json!({})));
-        a.push(cmd("Discard review request", "llls.dismissReview", serde_json::json!({})));
-        a.push(cmd("Go to next unreviewed file", "llls.nextFile", serde_json::json!({})));
+        a.push(cmd("Send review to Claude", "llls.submitReview", serde_json::json!({})));
+        a.push(cmd("Decline review request", "llls.dismissReview", serde_json::json!({})));
+        a.push(cmd("Next file to review", "llls.nextFile", serde_json::json!({})));
     }
     a
 }
@@ -103,7 +103,7 @@ pub fn hover_for(comments: &[&Comment], line1: u32) -> Option<String> {
     }
     let mut md = String::new();
     for c in matching {
-        md.push_str(&format!("**📝 review comment**\n\n{}\n\n", c.body));
+        md.push_str(&format!("**📝 agent note**\n\n{}\n\n", c.body));
     }
     Some(md)
 }
@@ -153,9 +153,9 @@ mod tests {
         let none = code_actions("a.rs", 1, true, false, false, true);
         assert!(none.iter().all(|a| !title(a).contains("Edit")));
         let some = code_actions("a.rs", 1, true, false, true, true);
-        assert!(some.iter().any(|a| title(a).contains("Edit")));
-        assert!(some.iter().any(|a| title(a).contains("Submit review")));
-        assert!(some.iter().any(|a| title(a).contains("Go to next unreviewed file")));
+        assert!(some.iter().any(|a| title(a).contains("Edit agent note")));
+        assert!(some.iter().any(|a| title(a).contains("Send review to Claude")));
+        assert!(some.iter().any(|a| title(a).contains("Next file to review")));
     }
 
     #[test]
