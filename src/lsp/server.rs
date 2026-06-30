@@ -134,19 +134,29 @@ impl Backend {
                 "A comment buffer is already open. Finish it (save & close) first.").await;
             return;
         }
-        let body = format!("{hint}{prefill}");
+        // Typing area on the first line (cursor lands here), hint pushed below —
+        // so the buffer opens ready for `i` + type without navigating past it.
+        let body = if prefill.is_empty() {
+            format!("\n{hint}")
+        } else {
+            format!("{prefill}\n\n{hint}")
+        };
         if std::fs::write(&pending.buffer, body).is_err() {
-            self.client.show_message(MessageType::ERROR, "Could not open the comment buffer.").await;
+            self.client.show_message(MessageType::ERROR, "Could not open the note buffer.").await;
             return;
         }
         self.state.write().await.pending_input = Some(pending.clone());
         if let Ok(uri) = Url::from_file_path(&pending.buffer) {
+            let top = Range {
+                start: Position { line: 0, character: 0 },
+                end: Position { line: 0, character: 0 },
+            };
             let _ = self.client.show_document(ShowDocumentParams {
-                uri, external: Some(false), take_focus: Some(true), selection: None,
+                uri, external: Some(false), take_focus: Some(true), selection: Some(top),
             }).await;
         }
         self.client.show_message(MessageType::INFO,
-            "Write your comment, then save & close the buffer (:wbc). Empty = cancel.").await;
+            "Write your note, then save & close the buffer (:wbc). Empty = cancel.").await;
     }
 
     async fn add_comment(&self, args: Vec<Value>) {
@@ -158,7 +168,7 @@ impl Backend {
         };
         let context = read_line_context(&repo_root.join(&file), line);
         self.open_input(
-            "# Review comment — save & close to submit, empty to cancel.\n",
+            "# Leave an agent note — save & close (:wbc) to submit, empty to cancel.\n",
             "",
             PendingInput { buffer, file, line, context, edit_index: None },
         ).await;
@@ -176,7 +186,7 @@ impl Backend {
             (s.llls_dir.join("comment.md"), prefill, idx, context)
         };
         self.open_input(
-            "# Edit comment — save & close to submit, empty to delete.\n",
+            "# Edit agent note — save & close (:wbc) to submit, empty to delete.\n",
             &prefill,
             PendingInput { buffer, file, line, context, edit_index: idx },
         ).await;
