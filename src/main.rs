@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use llls::{await_review, lsp};
+use llls::{await_review, lsp, take_review};
 
 #[derive(Parser)]
 #[command(name = "llls", about = "LLM Language Server — an editor-driven review loop")]
@@ -34,6 +34,11 @@ enum Cmd {
         #[arg(long)]
         timeout: Option<u64>,
     },
+    /// Print and clear any review the developer pushed (ad-hoc), then exit.
+    TakeReview {
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -45,6 +50,10 @@ fn main() -> anyhow::Result<()> {
         }
         Cmd::AwaitReview { files, changed, message, round, json, timeout } => {
             let code = await_review::run(await_review::Args { files, changed, message, round, json, timeout })?;
+            std::process::exit(code);
+        }
+        Cmd::TakeReview { json } => {
+            let code = take_review::run(json)?;
             std::process::exit(code);
         }
     }
