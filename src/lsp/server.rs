@@ -197,11 +197,17 @@ impl Backend {
     }
 
     async fn submit_review(&self) {
+        let n = self.state.read().await.draft.comments.len();
+        let prompt = match n {
+            0 => "Review has no notes. Which verdict?".to_string(),
+            1 => "Review has 1 note. Which verdict?".to_string(),
+            _ => format!("Review has {n} notes. Which verdict?"),
+        };
         let verdict = self
             .client
             .show_message_request(
                 MessageType::INFO,
-                "Submit review with which verdict?".to_string(),
+                prompt,
                 Some(vec![
                     MessageActionItem { title: "Approve".into(), properties: Default::default() },
                     MessageActionItem { title: "Request changes".into(), properties: Default::default() },

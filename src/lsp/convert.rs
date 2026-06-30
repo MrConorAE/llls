@@ -25,11 +25,11 @@ pub fn request_marker(target: &FileTarget, message: &str, reviewed: bool) -> Dia
         .or_else(|| target.line.map(|l| l.saturating_sub(1)))
         .unwrap_or(0);
     let msg = if reviewed {
-        format!("✓ reviewed — {message}")
+        format!("Reviewed — {message}")
     } else if message.is_empty() {
-        "📋 Claude requests review of this file".to_string()
+        "Claude requests review of this file".to_string()
     } else {
-        format!("📋 Claude requests review — {message}")
+        format!("Claude requests review — {message}")
     };
     let severity = if reviewed { DiagnosticSeverity::HINT } else { DiagnosticSeverity::INFORMATION };
     line_diag(line0, severity, msg)
@@ -45,7 +45,7 @@ pub fn comment_diag(c: &Comment) -> Diagnostic {
     } else {
         first.to_string()
     };
-    line_diag(line0, DiagnosticSeverity::HINT, format!("📝 {preview}"))
+    line_diag(line0, DiagnosticSeverity::HINT, preview)
 }
 
 /// All diagnostics for one file: the request marker (if requested) + each comment.
@@ -103,7 +103,7 @@ pub fn hover_for(comments: &[&Comment], line1: u32) -> Option<String> {
     }
     let mut md = String::new();
     for c in matching {
-        md.push_str(&format!("**📝 agent note**\n\n{}\n\n", c.body));
+        md.push_str(&format!("**Agent note**\n\n{}\n\n", c.body));
     }
     Some(md)
 }
@@ -133,7 +133,7 @@ mod tests {
         let t = FileTarget { path: "a.rs".into(), line: Some(5), range: None };
         let d = request_marker(&t, "m", true);
         assert_eq!(d.severity, Some(DiagnosticSeverity::HINT));
-        assert!(d.message.contains("reviewed"));
+        assert!(d.message.contains("Reviewed"));
     }
 
     #[test]
