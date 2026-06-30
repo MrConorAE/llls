@@ -267,11 +267,17 @@ impl Backend {
             comments,
         };
         let store = Backend::store(&dir);
+        if store.read_request().is_some() {
+            self.client.show_message(MessageType::WARNING,
+                "A review request just arrived — its markers will appear shortly; \
+                 run 'Send review to Claude' again to respond with a verdict.").await;
+            return; // leave the draft intact; the request will activate on the next reload
+        }
         if store.write_inbox(&review).is_err() {
             self.client.show_message(MessageType::ERROR, "Could not write inbox.json.").await;
             return;
         }
-        store.clear_request_draft(); // removes draft.json (and request.json if any — none here)
+        store.clear_draft(); // removes draft.json only — never touches request.json
         self.state.write().await.draft = Draft::default();
         refresh_diagnostics(&self.client, &self.state).await;
         self.client.show_message(MessageType::INFO,
@@ -279,6 +285,18 @@ impl Backend {
     }
 
     async fn dismiss_review(&self) {
+        let (has_request, dir) = {
+            let s = self.state.read().await;
+            (s.request.is_some(), s.llls_dir.clone())
+        };
+        if !has_request {
+            // Ad-hoc draft: discard the notes locally (no inbox write).
+            Backend::store(&dir).clear_draft();
+            self.state.write().await.draft = Draft::default();
+            refresh_diagnostics(&self.client, &self.state).await;
+            self.client.show_message(MessageType::INFO, "Review notes discarded.").await;
+            return;
+        }
         self.finalize(Verdict::Dismissed).await;
     }
 

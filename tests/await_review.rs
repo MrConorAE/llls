@@ -110,3 +110,15 @@ fn await_review_refuses_when_request_already_pending() {
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("already pending"));
 }
+
+#[test]
+fn await_review_errors_when_no_targets() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_llls"))
+        .args(["await-review"])
+        .current_dir(tmp.path()).output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("nothing to review"));
+    assert!(!tmp.path().join(".llls/request.json").exists());
+}

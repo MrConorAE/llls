@@ -54,6 +54,7 @@ impl Store {
     }
 
     fn remove(p: &Path) { let _ = std::fs::remove_file(p); }
+    pub fn clear_draft(&self) { Self::remove(&self.draft_path()); }
     pub fn clear_request_draft(&self) {
         Self::remove(&self.request_path());
         Self::remove(&self.draft_path());
