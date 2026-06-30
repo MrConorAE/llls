@@ -1,21 +1,15 @@
-# llls — LLM Language Server
+# llls — llm language server
 
-An editor-driven code-review loop between an LLM agent and you. The agent
-produces an artifact and requests a review; you annotate it in your editor with
-ordinary LSP code actions; your verdict and comments are routed back to the
-agent. The inverse of [glls](../glls).
-
-## Components
-
-- `llls lsp` — the language server (point your editor at it).
-- `llls await-review --for <files> --message <why>` — the agent side: requests a
-  review and blocks until you submit one, then prints it.
-
-They share nothing but files under a repo-local `.llls/` directory.
+Editor-driven code review where the reviewee is your AI agent. It produces
+something (spec, plan, code), asks for review, and waits; you annotate in your
+editor with LSP code actions; your verdict + notes go back to it. The inverse of
+[glls](../glls) — you push reviews *to* the agent instead of pulling them from a forge.
 
 ## Install
 
-`cargo install --path .`
+- `cargo build --release`, then symlink `target/release/llls` onto your `PATH`
+  (e.g. `~/.local/bin/llls`) — rebuilds refresh it automatically. Or `cargo install --path .`.
+- Needs a git repo: state lives in a gitignored `.llls/` at the repo root.
 
 ## Editor (Helix)
 
@@ -24,10 +18,35 @@ They share nothing but files under a repo-local `.llls/` directory.
 command = "llls"
 args = ["lsp"]
 ```
-Attach it to the languages you review. In a file, run code actions to add
-comments, then "Submit review" and pick a verdict (Approve / Request changes /
-Comment).
+- Attach it to the languages you review. Helix **replaces** a language's server
+  list, so re-list the defaults too: `language-servers = ["rust-analyzer", "llls"]`.
+- Runs alongside your real language servers; `:lsp-restart` after a rebuild.
+
+## Reviewing (your side)
+
+- Requested files show a line-1 diagnostic: `Claude requests review — <message>`.
+- Code actions on a line:
+  - **Leave an agent note** → write in the scratch buffer, `:wbc` to submit (empty = cancel).
+  - **Edit / Delete agent note** on a noted line (hover shows it).
+  - **Mark file reviewed** / **Next file to review** to work through the set.
+  - **Send review to Claude** → pick **Approve / Request changes / Comment**; or **Discard review**.
+- Push a review *unprompted*: leave notes on any file and **Send review to Claude**
+  with no pending request — the agent collects them with `llls take-review`.
+
+## Agent side
+
+- `llls await-review --for <files> --message <why>` — request a review, block until
+  you submit, print it. Target regions with `path:LINE` or `path:START-END`.
+- `llls await-review --changed [<ref>]` — review git-changed files (working tree, or
+  this branch's diff vs `<ref>` for pre-merge) instead of listing them.
+- `llls take-review` — drain any review you pushed unprompted.
+
+## When the agent asks
+
+Driven by the `llls` skill, gated by a `review-cadence:` line in your CLAUDE.md:
+`off` / `end-only` / `spec+plan` / `all` (default `spec+plan`). Install the personal
+skill so the agent knows to use any of this. `llls` is global — works in any git repo.
 
 ## Design
 
-See `docs/superpowers/specs/2026-06-30-llls-design.md`.
+`docs/superpowers/specs/2026-06-30-llls-design.md` (+ `…-v2-design.md`).
