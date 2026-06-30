@@ -23,6 +23,7 @@ pub struct BackendState {
     pub reviewed: HashSet<String>,
     pub pending_input: Option<PendingInput>,
     pub published_files: HashSet<String>,
+    pub warned_pending_request: bool,
 }
 
 impl BackendState {
