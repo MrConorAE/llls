@@ -1,11 +1,5 @@
 use clap::{Parser, Subcommand};
-
-mod await_review;
-mod lsp;
-mod render;
-mod store;
-mod types;
-mod watch;
+use llls::{await_review, lsp};
 
 #[derive(Parser)]
 #[command(name = "llls", about = "LLM Language Server — an editor-driven review loop")]
