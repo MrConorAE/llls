@@ -35,28 +35,30 @@ formatting) or mid-exploration. When genuinely unsure, ask the developer.
 
 ## How to request
 
-Launch as a **background task** so the conversation continues:
-- A document: `llls await-review --for <file> --message "<what to look at>"`
-- Generated code: `llls await-review --changed --message "..."` (working-tree
-  changes) or `--changed <base>` (this branch's diff vs `<base>`, for pre-merge).
-- Multiple files each needing different context — give each its own message via a
-  JSON request on stdin (each file's marker then shows its own note):
+Launch as a **background task** so the conversation continues. Two input styles:
+
+- **Simple** — one blanket message: `llls await-review --for <file>[:LINE|:START-END] --message "..."`
+  (comma-separated files), or `--changed [<base>]` to pull changed files from git
+  (working tree, or this branch's diff vs `<base>`).
+- **Rich — prefer this whenever there's more than one file, or the files differ:**
+  a JSON request on stdin where **each file carries its own line/range and its own
+  message**. This is the most useful form — every marker points the reviewer at the
+  exact lines with the exact question:
   ```
   llls await-review --request - <<'EOF'
-  { "message": "overall context",
-    "files": [ {"path": "src/a.rs", "range": [40, 80], "message": "race here?"},
-               {"path": "docs/plan.md", "message": "check the migration section"} ] }
+  { "message": "optional overall context",
+    "files": [
+      {"path": "src/a.rs",    "range": [40, 80], "message": "race between refresh and read?"},
+      {"path": "src/b.rs",    "line": 12,        "message": "off-by-one at the boundary?"},
+      {"path": "docs/plan.md",                   "message": "does the migration section still match?"}
+    ] }
   EOF
   ```
-  (`--request` is exclusive with `--for`/`--changed`; per-file `message` is optional.)
+  (`--request` is exclusive with `--for`/`--changed`; per-file `line`/`range`/`message` each optional.)
 - `--round N` on follow-up rounds.
 
-**Target specific lines, not whole files, when only part matters** — the marker
-then lands on that line/range instead of line 1, so the developer's eye goes
-straight to it. Every target takes an optional line or range:
-`--for src/a.rs:42` or `--for src/a.rs:40-80`; in `--request` JSON,
-`"line": 42` or `"range": [40, 80]`. Prefer a range around the code you actually
-want looked at rather than dumping a whole file.
+**Always prefer a line/range plus a specific question over handing over a whole
+file** — that's the difference between "glance at this" and an actionable review.
 
 When it returns, act on the **verdict**: `approve` → proceed (comments optional
 polish); `request_changes` → address every note, then consider another round;
