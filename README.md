@@ -36,7 +36,7 @@ s = ":lsp-workspace-command llls.submitReview"
 D = ":lsp-workspace-command llls.dismissReview"
 f = "@<space>DClaude requests %source llls %sev INFO %p " # unseen files
 u = "@<space>Dreview %source llls %m "                    # all requested files
-U = "@<space>D@ %source llls %sev HINT %m "               # my notes
+U = "@<space>D %source llls %sev HINT "                   # notes + reviewed files (HINT)
 ```
 (`n` marks the file reviewed before advancing, else "next" reopens the same
 buffer. Diagnostic-picker filters mirror glls's syntax — tweak to taste.)
