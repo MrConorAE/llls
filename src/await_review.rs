@@ -5,6 +5,13 @@ use crate::store::{repo_relative, Store};
 use crate::types::{parse_target, Request};
 use crate::{render, watch};
 
+#[derive(serde::Deserialize)]
+struct RequestSpec {
+    #[serde(default)]
+    message: String,
+    files: Vec<crate::types::FileTarget>,
+}
+
 pub struct Args {
     pub files: Vec<String>,
     pub changed: Option<String>,
@@ -12,6 +19,7 @@ pub struct Args {
     pub round: u32,
     pub json: bool,
     pub timeout: Option<u64>,
+    pub request: Option<String>,
 }
 
 pub fn run(args: Args) -> Result<i32> {
@@ -31,23 +39,46 @@ pub fn run(args: Args) -> Result<i32> {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     let id = format!("r{}-{}", args.round, now.as_nanos());
 
-    let mut targets: Vec<crate::types::FileTarget> = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    for f in &args.files {
-        let mut t = parse_target(f);
-        t.path = repo_relative(&t.path, &repo_root);
-        if seen.insert(t.path.clone()) { targets.push(t); }
-    }
-    if let Some(spec) = &args.changed {
-        let base = if spec.is_empty() { None } else { Some(spec.as_str()) };
-        for p in crate::changed::changed_files(&repo_root, base)? {
-            if seen.insert(p.clone()) {
-                targets.push(crate::types::FileTarget { path: p, line: None, range: None });
+    let (files, message): (Vec<crate::types::FileTarget>, String) = if let Some(req) = &args.request {
+        if !args.files.is_empty() || args.changed.is_some() {
+            eprintln!("llls: --request is mutually exclusive with --for/--changed.");
+            return Ok(1);
+        }
+        let raw = if req == "-" {
+            use std::io::Read;
+            let mut s = String::new();
+            std::io::stdin().read_to_string(&mut s)?;
+            s
+        } else {
+            std::fs::read_to_string(req).with_context(|| format!("reading --request file {req}"))?
+        };
+        let spec: RequestSpec = serde_json::from_str(&raw).context("parsing --request JSON")?;
+        let mut seen = std::collections::HashSet::new();
+        let files = spec.files.into_iter().filter_map(|mut t| {
+            t.path = repo_relative(&t.path, &repo_root);
+            if seen.insert(t.path.clone()) { Some(t) } else { None }
+        }).collect::<Vec<_>>();
+        (files, spec.message)
+    } else {
+        let mut targets: Vec<crate::types::FileTarget> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for f in &args.files {
+            let mut t = parse_target(f);
+            t.path = repo_relative(&t.path, &repo_root);
+            if seen.insert(t.path.clone()) { targets.push(t); }
+        }
+        if let Some(spec) = &args.changed {
+            let base = if spec.is_empty() { None } else { Some(spec.as_str()) };
+            for p in crate::changed::changed_files(&repo_root, base)? {
+                if seen.insert(p.clone()) {
+                    targets.push(crate::types::FileTarget { path: p, line: None, range: None, message: None });
+                }
             }
         }
-    }
-    if targets.is_empty() {
-        eprintln!("llls: nothing to review (no --for files and --changed found no changes).");
+        (targets, args.message.clone())
+    };
+    if files.is_empty() {
+        eprintln!("llls: nothing to review (no files supplied).");
         return Ok(1);
     }
 
@@ -55,8 +86,8 @@ pub fn run(args: Args) -> Result<i32> {
         id: id.clone(),
         round: args.round,
         created_unix: now.as_secs(),
-        files: targets,
-        message: args.message,
+        files,
+        message,
     };
     store.write_request(&request)?;
 
