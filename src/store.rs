@@ -78,6 +78,18 @@ fn write_json<T: serde::Serialize>(p: &Path, v: &T) -> Result<()> {
     Ok(())
 }
 
+/// The human reviewer's display name (`git config user.name`), for attributing
+/// the review to a person rather than to llls. Falls back to "the developer".
+pub fn reviewer_name(repo_root: &Path) -> String {
+    std::process::Command::new("git")
+        .arg("-C").arg(repo_root).args(["config", "user.name"])
+        .output().ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "the developer".to_string())
+}
+
 /// Normalise a possibly-absolute or cwd-relative path to repo-relative.
 pub fn repo_relative(path: &str, repo_root: &Path) -> String {
     let p = Path::new(path);
