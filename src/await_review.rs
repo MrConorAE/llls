@@ -42,7 +42,7 @@ pub fn run(args: Args) -> Result<i32> {
         let base = if spec.is_empty() { None } else { Some(spec.as_str()) };
         for p in crate::changed::changed_files(&repo_root, base)? {
             if seen.insert(p.clone()) {
-                targets.push(crate::types::FileTarget { path: p, line: None, range: None });
+                targets.push(crate::types::FileTarget { path: p, line: None, range: None, message: None });
             }
         }
     }

@@ -7,6 +7,8 @@ pub struct FileTarget {
     pub line: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub range: Option<[u32; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -62,14 +64,14 @@ pub fn parse_target(s: &str) -> FileTarget {
         if !path.is_empty() {
             if let Some((a, b)) = loc.split_once('-') {
                 if let (Ok(a), Ok(b)) = (a.parse::<u32>(), b.parse::<u32>()) {
-                    return FileTarget { path: path.to_string(), line: None, range: Some([a, b]) };
+                    return FileTarget { path: path.to_string(), line: None, range: Some([a, b]), message: None };
                 }
             } else if let Ok(n) = loc.parse::<u32>() {
-                return FileTarget { path: path.to_string(), line: Some(n), range: None };
+                return FileTarget { path: path.to_string(), line: Some(n), range: None, message: None };
             }
         }
     }
-    FileTarget { path: s.to_string(), line: None, range: None }
+    FileTarget { path: s.to_string(), line: None, range: None, message: None }
 }
 
 #[cfg(test)]
@@ -79,26 +81,26 @@ mod tests {
     #[test]
     fn parse_plain_path() {
         assert_eq!(parse_target("docs/plan.md"),
-            FileTarget { path: "docs/plan.md".into(), line: None, range: None });
+            FileTarget { path: "docs/plan.md".into(), line: None, range: None, message: None });
     }
 
     #[test]
     fn parse_single_line() {
         assert_eq!(parse_target("src/foo.rs:42"),
-            FileTarget { path: "src/foo.rs".into(), line: Some(42), range: None });
+            FileTarget { path: "src/foo.rs".into(), line: Some(42), range: None, message: None });
     }
 
     #[test]
     fn parse_range() {
         assert_eq!(parse_target("src/foo.rs:40-80"),
-            FileTarget { path: "src/foo.rs".into(), line: None, range: Some([40, 80]) });
+            FileTarget { path: "src/foo.rs".into(), line: None, range: Some([40, 80]), message: None });
     }
 
     #[test]
     fn non_numeric_suffix_is_part_of_path() {
         // a colon that isn't a line locator stays in the path
         assert_eq!(parse_target("weird:name.rs"),
-            FileTarget { path: "weird:name.rs".into(), line: None, range: None });
+            FileTarget { path: "weird:name.rs".into(), line: None, range: None, message: None });
     }
 
     #[test]
@@ -116,5 +118,15 @@ mod tests {
         };
         let s = serde_json::to_string(&r).unwrap();
         assert_eq!(serde_json::from_str::<Review>(&s).unwrap(), r);
+    }
+
+    #[test]
+    fn file_target_message_round_trips() {
+        let t = FileTarget { path: "a.rs".into(), line: None, range: Some([1, 2]), message: Some("look here".into()) };
+        let s = serde_json::to_string(&t).unwrap();
+        assert_eq!(serde_json::from_str::<FileTarget>(&s).unwrap(), t);
+        // absent message still deserializes (backward-compat)
+        let old: FileTarget = serde_json::from_str(r#"{"path":"b.rs"}"#).unwrap();
+        assert_eq!(old, FileTarget { path: "b.rs".into(), line: None, range: None, message: None });
     }
 }

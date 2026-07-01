@@ -24,12 +24,13 @@ pub fn request_marker(target: &FileTarget, message: &str, reviewed: bool) -> Dia
         .map(|r| r[0].saturating_sub(1))
         .or_else(|| target.line.map(|l| l.saturating_sub(1)))
         .unwrap_or(0);
+    let m = target.message.as_deref().filter(|s| !s.is_empty()).unwrap_or(message);
     let msg = if reviewed {
-        format!("Reviewed — {message}")
-    } else if message.is_empty() {
+        format!("Reviewed — {m}")
+    } else if m.is_empty() {
         "Claude requests review of this file".to_string()
     } else {
-        format!("Claude requests review — {message}")
+        format!("Claude requests review — {m}")
     };
     let severity = if reviewed { DiagnosticSeverity::HINT } else { DiagnosticSeverity::INFORMATION };
     line_diag(line0, severity, msg)
@@ -118,7 +119,7 @@ mod tests {
 
     #[test]
     fn whole_file_marker_lands_on_line_zero() {
-        let t = FileTarget { path: "a.rs".into(), line: None, range: None };
+        let t = FileTarget { path: "a.rs".into(), line: None, range: None, message: None };
         let d = request_marker(&t, "look here", false);
         assert_eq!(d.range.start.line, 0);
         assert_eq!(d.severity, Some(DiagnosticSeverity::INFORMATION));
@@ -127,13 +128,13 @@ mod tests {
 
     #[test]
     fn ranged_marker_lands_on_start_line_zero_indexed() {
-        let t = FileTarget { path: "a.rs".into(), line: None, range: Some([40, 80]) };
+        let t = FileTarget { path: "a.rs".into(), line: None, range: Some([40, 80]), message: None };
         assert_eq!(request_marker(&t, "", false).range.start.line, 39);
     }
 
     #[test]
     fn reviewed_marker_is_hint() {
-        let t = FileTarget { path: "a.rs".into(), line: Some(5), range: None };
+        let t = FileTarget { path: "a.rs".into(), line: Some(5), range: None, message: None };
         let d = request_marker(&t, "m", true);
         assert_eq!(d.severity, Some(DiagnosticSeverity::HINT));
         assert!(d.message.contains("Reviewed"));
@@ -143,7 +144,7 @@ mod tests {
     fn file_diagnostics_combines_marker_and_comments() {
         let req = crate::types::Request {
             id: "i".into(), round: 1, created_unix: 0, message: "m".into(),
-            files: vec![FileTarget { path: "a.rs".into(), line: None, range: None }],
+            files: vec![FileTarget { path: "a.rs".into(), line: None, range: None, message: None }],
         };
         let c = Comment { file: "a.rs".into(), line: 10, context: String::new(), body: "note".into() };
         let diags = file_diagnostics(Some(&req), "a.rs", false, &[&c]);
@@ -175,5 +176,13 @@ mod tests {
 
     fn title(a: &CodeActionOrCommand) -> String {
         match a { CodeActionOrCommand::Command(c) => c.title.clone(), _ => String::new() }
+    }
+
+    #[test]
+    fn request_marker_prefers_per_file_message() {
+        let t = FileTarget { path: "a.rs".into(), line: None, range: None, message: Some("per-file".into()) };
+        assert!(request_marker(&t, "overall", false).message.contains("per-file"));
+        let t2 = FileTarget { path: "a.rs".into(), line: None, range: None, message: None };
+        assert!(request_marker(&t2, "overall", false).message.contains("overall"));
     }
 }
