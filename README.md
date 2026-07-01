@@ -31,10 +31,15 @@ c = ":lsp-workspace-command llls.addComment {\"file\": \"%{buffer_name}\", \"lin
 e = ":lsp-workspace-command llls.editComment {\"file\": \"%{buffer_name}\", \"line\": %{cursor_line}}"
 x = ":lsp-workspace-command llls.deleteComment {\"file\": \"%{buffer_name}\", \"line\": %{cursor_line}}"
 m = ":lsp-workspace-command llls.markReviewed {\"file\": \"%{buffer_name}\"}"
-n = ":lsp-workspace-command llls.nextFile"
+n = "@:lsp-workspace-command llls.markReviewed {\"file\": \"%{buffer_name}\"}<ret>:lsp-workspace-command llls.nextFile<ret>"
 s = ":lsp-workspace-command llls.submitReview"
-d = ":lsp-workspace-command llls.dismissReview"
+D = ":lsp-workspace-command llls.dismissReview"
+f = "@<space>DClaude requests %source llls %sev INFO %p " # unseen files
+u = "@<space>Dreview %source llls %m "                    # all requested files
+U = "@<space>D@ %source llls %sev HINT %m "               # my notes
 ```
+(`n` marks the file reviewed before advancing, else "next" reopens the same
+buffer. Diagnostic-picker filters mirror glls's syntax — tweak to taste.)
 
 ## Reviewing (your side)
 
