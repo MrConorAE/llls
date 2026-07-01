@@ -51,6 +51,13 @@ Launch as a **background task** so the conversation continues:
   (`--request` is exclusive with `--for`/`--changed`; per-file `message` is optional.)
 - `--round N` on follow-up rounds.
 
+**Target specific lines, not whole files, when only part matters** — the marker
+then lands on that line/range instead of line 1, so the developer's eye goes
+straight to it. Every target takes an optional line or range:
+`--for src/a.rs:42` or `--for src/a.rs:40-80`; in `--request` JSON,
+`"line": 42` or `"range": [40, 80]`. Prefer a range around the code you actually
+want looked at rather than dumping a whole file.
+
 When it returns, act on the **verdict**: `approve` → proceed (comments optional
 polish); `request_changes` → address every note, then consider another round;
 `comment` → weigh it; `dismissed` → proceed, noting no review was given.
