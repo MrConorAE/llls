@@ -3,7 +3,7 @@
 Editor-driven code review where the reviewee is your AI agent. It produces
 something (spec, plan, code), asks for review, and waits; you annotate in your
 editor with LSP code actions; your verdict + notes go back to it. The inverse of
-[glls](../glls) — you push reviews *to* the agent instead of pulling them from a forge.
+[glls](https://github.com/MrConorAE/glls) — you push reviews *to* the agent instead of pulling them from a forge.
 
 ## Install
 
@@ -81,7 +81,3 @@ cp -r skills/llls <project>/.claude/skills/
 - No code actions on a file? It's outside the repo root — llls only acts on files
   inside the git repo (so files under `/tmp`, a scratchpad, etc. get nothing).
   `RUST_LOG=llls=debug` logs the reason and the root it's scoped to.
-
-## Design
-
-`docs/superpowers/specs/2026-06-30-llls-design.md` (+ `…-v2-design.md`).
