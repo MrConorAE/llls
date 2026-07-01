@@ -122,3 +122,55 @@ fn await_review_errors_when_no_targets() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("nothing to review"));
     assert!(!tmp.path().join(".llls/request.json").exists());
 }
+
+#[test]
+fn await_review_request_stdin_carries_per_file_messages() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let llls = tmp.path().join(".llls");
+    let llls2 = llls.clone();
+    let reviewer = std::thread::spawn(move || {
+        let req = llls2.join("request.json");
+        for _ in 0..200 {
+            if let Ok(s) = std::fs::read_to_string(&req) {
+                let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+                let files = v["files"].as_array().unwrap();
+                assert!(files.iter().any(|f| f["path"] == "a.rs" && f["message"] == "check bounds"),
+                    "files: {}", v["files"]);
+                let id = v["id"].as_str().unwrap();
+                let t = llls2.join("review.json.tmp");
+                std::fs::write(&t, serde_json::json!({"id":id,"verdict":"approve","comments":[]}).to_string()).unwrap();
+                std::fs::rename(&t, llls2.join("review.json")).unwrap();
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        panic!("no request.json");
+    });
+    let mut child = Command::new(env!("CARGO_BIN_EXE_llls"))
+        .args(["await-review", "--request", "-"])
+        .current_dir(tmp.path())
+        .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .spawn().unwrap();
+    child.stdin.take().unwrap()
+        .write_all(br#"{"message":"overall","files":[{"path":"a.rs","range":[1,5],"message":"check bounds"}]}"#)
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    reviewer.join().unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
+fn await_review_request_conflicts_with_for() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_llls"))
+        .args(["await-review", "--request", "-", "--for", "a.rs"])
+        .current_dir(tmp.path())
+        .stdin(std::process::Stdio::null())
+        .output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("mutually exclusive"));
+}

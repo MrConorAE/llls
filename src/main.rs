@@ -33,6 +33,10 @@ enum Cmd {
         /// Give up after this many seconds (default: wait forever).
         #[arg(long)]
         timeout: Option<u64>,
+        /// Read a JSON review request ({message?, files:[{path,line?/range?,message?}]})
+        /// from a file, or `-` for stdin. Mutually exclusive with --for/--changed.
+        #[arg(long)]
+        request: Option<String>,
     },
     /// Print and clear any review the developer pushed (ad-hoc), then exit.
     TakeReview {
@@ -48,8 +52,8 @@ fn main() -> anyhow::Result<()> {
             lsp::run();
             Ok(())
         }
-        Cmd::AwaitReview { files, changed, message, round, json, timeout } => {
-            let code = await_review::run(await_review::Args { files, changed, message, round, json, timeout })?;
+        Cmd::AwaitReview { files, changed, message, round, json, timeout, request } => {
+            let code = await_review::run(await_review::Args { files, changed, message, round, json, timeout, request })?;
             std::process::exit(code);
         }
         Cmd::TakeReview { json } => {
