@@ -169,8 +169,15 @@ impl Backend {
             "Write your note, then save & close the buffer (:wbc). Empty = cancel.").await;
     }
 
+    /// Normalise a `file` arg — absolute (Helix `%{buffer_name}` from a keybind)
+    /// or already repo-relative (from a code action) — to repo-relative.
+    async fn resolve_file(&self, raw: &str) -> String {
+        let s = self.state.read().await;
+        crate::store::repo_relative(raw, &s.repo_root)
+    }
+
     async fn add_comment(&self, args: Vec<Value>) {
-        let file = Self::arg_str(&args, "file");
+        let file = self.resolve_file(&Self::arg_str(&args, "file")).await;
         let line = Self::arg_u32(&args, "line");
         let (repo_root, buffer) = {
             let s = self.state.read().await;
@@ -185,7 +192,7 @@ impl Backend {
     }
 
     async fn edit_comment(&self, args: Vec<Value>) {
-        let file = Self::arg_str(&args, "file");
+        let file = self.resolve_file(&Self::arg_str(&args, "file")).await;
         let line = Self::arg_u32(&args, "line");
         let (buffer, prefill, idx, context) = {
             let s = self.state.read().await;
@@ -203,7 +210,7 @@ impl Backend {
     }
 
     async fn delete_comment(&self, args: Vec<Value>) {
-        let file = Self::arg_str(&args, "file");
+        let file = self.resolve_file(&Self::arg_str(&args, "file")).await;
         let line = Self::arg_u32(&args, "line");
         self.state.write().await.delete_comment(&file, line);
         persist_draft(&self.state).await;
@@ -211,7 +218,7 @@ impl Backend {
     }
 
     async fn mark_reviewed(&self, args: Vec<Value>) {
-        let file = Self::arg_str(&args, "file");
+        let file = self.resolve_file(&Self::arg_str(&args, "file")).await;
         self.state.write().await.toggle_reviewed(&file);
         refresh_diagnostics(&self.client, &self.state).await;
     }

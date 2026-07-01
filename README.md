@@ -22,6 +22,20 @@ args = ["lsp"]
   list, so re-list the defaults too: `language-servers = ["rust-analyzer", "llls"]`.
 - Runs alongside your real language servers; `:lsp-restart` after a rebuild.
 
+Optional keybinds — a `space v a` review submenu (`%{buffer_name}` is normalized
+to repo-relative server-side, so cursor-line commands work):
+
+```toml
+[keys.normal.space.v.a]
+c = ":lsp-workspace-command llls.addComment {\"file\": \"%{buffer_name}\", \"line\": %{cursor_line}}"
+e = ":lsp-workspace-command llls.editComment {\"file\": \"%{buffer_name}\", \"line\": %{cursor_line}}"
+x = ":lsp-workspace-command llls.deleteComment {\"file\": \"%{buffer_name}\", \"line\": %{cursor_line}}"
+m = ":lsp-workspace-command llls.markReviewed {\"file\": \"%{buffer_name}\"}"
+n = ":lsp-workspace-command llls.nextFile"
+s = ":lsp-workspace-command llls.submitReview"
+d = ":lsp-workspace-command llls.dismissReview"
+```
+
 ## Reviewing (your side)
 
 - Requested files show a line-1 diagnostic: `Claude requests review — <message>`.
