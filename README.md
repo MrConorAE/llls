@@ -63,8 +63,18 @@ buffer. Diagnostic-picker filters mirror glls's syntax — tweak to taste.)
 ## When the agent asks
 
 Driven by the `llls` skill, gated by a `review-cadence:` line in your CLAUDE.md:
-`off` / `end-only` / `spec+plan` / `all` (default `spec+plan`). Install the personal
-skill so the agent knows to use any of this. `llls` is global — works in any git repo.
+`off` / `end-only` / `spec+plan` / `all` (default `spec+plan`). `llls` is global —
+works in any git repo.
+
+Install the skill so the agent knows to use any of this — copy the bundled
+template to wherever your agent loads skills:
+
+```sh
+# global (all projects)
+cp -r skills/llls ~/.claude/skills/
+# or per-project
+cp -r skills/llls <project>/.claude/skills/
+```
 
 ## Gotchas
 
