@@ -381,6 +381,7 @@ impl LanguageServer for Backend {
             let mut s = self.state.write().await;
             s.repo_root = store.repo_root();
             s.llls_dir = store.dir;
+            tracing::info!("llls scoped to repo root: {}", s.repo_root.display());
         }
 
         Ok(InitializeResult {
@@ -468,7 +469,14 @@ impl LanguageServer for Backend {
         let line1 = params.range.start.line + 1;
         let file = match uri_to_repo_path(&params.text_document.uri, &s.repo_root) {
             Some(f) => f,
-            None => return Ok(None),
+            None => {
+                tracing::debug!(
+                    "llls: no review actions — {} is outside the repo root {}",
+                    params.text_document.uri,
+                    s.repo_root.display()
+                );
+                return Ok(None);
+            }
         };
         let is_requested = s.request.as_ref().map(|r| r.files.iter().any(|t| t.path == file)).unwrap_or(false);
         let reviewed = s.reviewed.contains(&file);

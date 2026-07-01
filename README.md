@@ -47,6 +47,12 @@ Driven by the `llls` skill, gated by a `review-cadence:` line in your CLAUDE.md:
 `off` / `end-only` / `spec+plan` / `all` (default `spec+plan`). Install the personal
 skill so the agent knows to use any of this. `llls` is global — works in any git repo.
 
+## Gotchas
+
+- No code actions on a file? It's outside the repo root — llls only acts on files
+  inside the git repo (so files under `/tmp`, a scratchpad, etc. get nothing).
+  `RUST_LOG=llls=debug` logs the reason and the root it's scoped to.
+
 ## Design
 
 `docs/superpowers/specs/2026-06-30-llls-design.md` (+ `…-v2-design.md`).
