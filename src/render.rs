@@ -9,16 +9,16 @@ fn verdict_str(v: Verdict) -> &'static str {
     }
 }
 
-pub fn to_markdown(r: &Review, reviewer: &str) -> String {
+pub fn to_markdown(r: &Review) -> String {
     if r.verdict == Verdict::Dismissed {
-        return format!("# {reviewer} declined to review\n\nProceed without a review.\n");
+        return "# The user declined to review\n\nProceed without a review.\n".to_string();
     }
-    let mut s = format!("# Review by {reviewer} — verdict: {}\n\n", verdict_str(r.verdict));
+    let mut s = format!("# Review from the user — verdict: {}\n\n", verdict_str(r.verdict));
     if let Some(summary) = &r.summary {
         if !summary.trim().is_empty() { s.push_str(summary.trim()); s.push_str("\n\n"); }
     }
     if r.comments.is_empty() {
-        s.push_str(&format!("{reviewer} left no line comments.\n"));
+        s.push_str("The user left no line comments.\n");
     } else {
         for c in &r.comments {
             s.push_str(&format!("## {}:{}\n", c.file, c.line));
@@ -45,14 +45,13 @@ mod tests {
 
     #[test]
     fn dismissed_is_explicit() {
-        let md = to_markdown(&review(Verdict::Dismissed, vec![]), "Ada Lovelace");
-        assert!(md.contains("Ada Lovelace"));
+        let md = to_markdown(&review(Verdict::Dismissed, vec![]));
         assert!(md.contains("declined"));
     }
 
     #[test]
     fn approve_with_no_comments() {
-        let md = to_markdown(&review(Verdict::Approve, vec![]), "Ada Lovelace");
+        let md = to_markdown(&review(Verdict::Approve, vec![]));
         assert!(md.contains("verdict: approve"));
         assert!(md.contains("left no line comments"));
     }
@@ -61,7 +60,7 @@ mod tests {
     fn comments_render_with_anchor_and_context() {
         let md = to_markdown(&review(Verdict::RequestChanges, vec![
             Comment { file: "a.rs".into(), line: 12, context: "let x = 1;".into(), body: "use 2".into() },
-        ]), "Ada Lovelace");
+        ]));
         assert!(md.contains("verdict: request_changes"));
         assert!(md.contains("## a.rs:12"));
         assert!(md.contains("> let x = 1;"));
@@ -69,9 +68,9 @@ mod tests {
     }
 
     #[test]
-    fn markdown_attributes_review_to_reviewer() {
-        let md = to_markdown(&review(Verdict::Approve, vec![]), "Ada Lovelace");
-        assert!(md.contains("Review by Ada Lovelace"));
+    fn markdown_attributes_review_to_the_user() {
+        let md = to_markdown(&review(Verdict::Approve, vec![]));
+        assert!(md.contains("from the user"));
         assert!(!md.to_lowercase().contains("llls"));
     }
 

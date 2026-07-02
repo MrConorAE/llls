@@ -9,9 +9,10 @@ description: Use when you've produced a design/spec doc, a plan, or a body of ge
 request a review and wait, or the developer pushes one to you. Requires the
 `llls` binary on `PATH` and a git repo (state lives in `<repo>/.llls/`).
 
-**llls is not a reviewer.** It relays a *human developer's* review to you — the
-verdict and notes are the developer's decisions. Attribute them to the developer
-("the developer approved", "Conor requested changes"), never to llls or yourself.
+**llls is not a reviewer.** It relays *the user's own* review to you — the verdict
+and notes are the user's decisions, and the user is the person you're talking to.
+Refer to them in the **second person** ("you approved", "you flagged a race on
+line 40"), not the third person or by name, and never as llls or yourself.
 
 ## When to request — honor the developer's cadence
 

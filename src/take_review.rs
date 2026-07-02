@@ -7,8 +7,7 @@ pub fn run(json: bool) -> Result<i32> {
     let store = Store::discover(&cwd).context("llls must be run inside a git repository")?;
     match store.read_inbox() {
         Some(r) => {
-            let reviewer = crate::store::reviewer_name(&store.repo_root());
-            let out = if json { render::to_json(&r) } else { render::to_markdown(&r, &reviewer) };
+            let out = if json { render::to_json(&r) } else { render::to_markdown(&r) };
             println!("{out}");
             store.clear_inbox();
             Ok(0)

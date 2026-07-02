@@ -99,7 +99,7 @@ pub fn run(args: Args) -> Result<i32> {
 
     match review {
         Some(r) => {
-            let out = if args.json { render::to_json(&r) } else { render::to_markdown(&r, &crate::store::reviewer_name(&repo_root)) };
+            let out = if args.json { render::to_json(&r) } else { render::to_markdown(&r) };
             println!("{out}");
             store.clear_all(); // best-effort: removes review.json (+ any stray request/draft)
             Ok(0)
