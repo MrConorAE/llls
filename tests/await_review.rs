@@ -174,3 +174,42 @@ fn await_review_request_conflicts_with_for() {
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("mutually exclusive"));
 }
+
+#[test]
+fn await_review_request_keeps_multiple_entries_per_file() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let llls = tmp.path().join(".llls");
+    let llls2 = llls.clone();
+    let reviewer = std::thread::spawn(move || {
+        let req = llls2.join("request.json");
+        for _ in 0..200 {
+            if let Ok(s) = std::fs::read_to_string(&req) {
+                let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+                let entries: Vec<_> = v["files"].as_array().unwrap().iter()
+                    .filter(|f| f["path"] == "a.rs").collect();
+                assert_eq!(entries.len(), 2, "both same-file entries must survive: {}", v["files"]);
+                let id = v["id"].as_str().unwrap();
+                let t = llls2.join("review.json.tmp");
+                std::fs::write(&t, serde_json::json!({"id":id,"verdict":"approve","comments":[]}).to_string()).unwrap();
+                std::fs::rename(&t, llls2.join("review.json")).unwrap();
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        panic!("no request.json");
+    });
+    let mut child = Command::new(env!("CARGO_BIN_EXE_llls"))
+        .args(["await-review", "--request", "-"])
+        .current_dir(tmp.path())
+        .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .spawn().unwrap();
+    child.stdin.take().unwrap().write_all(
+        br#"{"files":[{"path":"a.rs","range":[10,20],"message":"first"},{"path":"a.rs","line":50,"message":"second"}]}"#
+    ).unwrap();
+    let out = child.wait_with_output().unwrap();
+    reviewer.join().unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+}

@@ -53,10 +53,12 @@ pub fn run(args: Args) -> Result<i32> {
             std::fs::read_to_string(req).with_context(|| format!("reading --request file {req}"))?
         };
         let spec: RequestSpec = serde_json::from_str(&raw).context("parsing --request JSON")?;
-        let mut seen = std::collections::HashSet::new();
-        let files = spec.files.into_iter().filter_map(|mut t| {
+        // Keep every entry: multiple targets for the same file (different
+        // line/range + message) are intentional here. Only the --for/--changed
+        // union below dedups by path.
+        let files = spec.files.into_iter().map(|mut t| {
             t.path = repo_relative(&t.path, &repo_root);
-            if seen.insert(t.path.clone()) { Some(t) } else { None }
+            t
         }).collect::<Vec<_>>();
         (files, spec.message)
     } else {

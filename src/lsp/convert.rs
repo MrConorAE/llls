@@ -53,7 +53,9 @@ pub fn comment_diag(c: &Comment) -> Diagnostic {
 pub fn file_diagnostics(request: Option<&Request>, file: &str, reviewed: bool, comments: &[&Comment]) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     if let Some(req) = request {
-        if let Some(t) = req.files.iter().find(|t| t.path == file) {
+        // One marker per request entry for this file — a file may carry several
+        // (different line/range + message).
+        for t in req.files.iter().filter(|t| t.path == file) {
             out.push(request_marker(t, &req.message, reviewed));
         }
     }
@@ -150,6 +152,23 @@ mod tests {
         let diags = file_diagnostics(Some(&req), "a.rs", false, &[&c]);
         assert_eq!(diags.len(), 2);
         assert_eq!(diags[1].range.start.line, 9); // comment at 1-indexed line 10
+    }
+
+    #[test]
+    fn file_diagnostics_renders_a_marker_per_request_entry_for_same_file() {
+        let req = crate::types::Request {
+            id: "i".into(), round: 1, created_unix: 0, message: "m".into(),
+            files: vec![
+                FileTarget { path: "a.rs".into(), line: None, range: Some([10, 20]), message: Some("first".into()) },
+                FileTarget { path: "a.rs".into(), line: Some(50), range: None, message: Some("second".into()) },
+            ],
+        };
+        let diags = file_diagnostics(Some(&req), "a.rs", false, &[]);
+        assert_eq!(diags.len(), 2);
+        assert_eq!(diags[0].range.start.line, 9);   // range start 10 -> 0-indexed 9
+        assert_eq!(diags[1].range.start.line, 49);  // line 50 -> 0-indexed 49
+        assert!(diags[0].message.contains("first"));
+        assert!(diags[1].message.contains("second"));
     }
 
     #[test]
