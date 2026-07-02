@@ -39,7 +39,9 @@ Launch as a **background task** so the conversation continues. Two input styles:
 
 - **Simple** — one blanket message: `llls await-review --for <file>[:LINE|:START-END] --message "..."`
   (comma-separated files), or `--changed [<base>]` to pull changed files from git
-  (working tree, or this branch's diff vs `<base>`).
+  (working tree, or this branch's diff vs `<base>`). `--for`/`--changed` allow
+  **one target per file** (a file listed twice is de-duplicated) and share the
+  single `--message` — for several ranges or notes within one file, use Rich.
 - **Rich — prefer this whenever there's more than one file, or the files differ:**
   a JSON request on stdin where **each file carries its own line/range and its own
   message**. This is the most useful form — every marker points the reviewer at the
