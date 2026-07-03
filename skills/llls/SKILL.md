@@ -44,24 +44,29 @@ Launch as a **background task** so the conversation continues. Two input styles:
   **one target per file** (a file listed twice is de-duplicated) and share the
   single `--message` — for several ranges or notes within one file, use Rich.
 - **Rich — prefer this whenever there's more than one file, or the files differ:**
-  a JSON request on stdin where **each file carries its own line/range and its own
-  message**. This is the most useful form — every marker points the reviewer at the
-  exact lines with the exact question:
+  a JSON request on stdin where **each entry carries its own line/range and its own
+  message**. A file can appear multiple times — one entry per question. The most
+  useful form combines a whole-file entry for context with targeted range entries
+  for specific concerns:
   ```
   llls await-review --request - <<'EOF'
   { "message": "optional overall context",
     "files": [
-      {"path": "src/a.rs",    "range": [40, 80], "message": "race between refresh and read?"},
-      {"path": "src/b.rs",    "line": 12,        "message": "off-by-one at the boundary?"},
-      {"path": "docs/plan.md",                   "message": "does the migration section still match?"}
+      {"path": "src/a.rs",    "message": "overall: does the cache invalidation logic look right?"},
+      {"path": "src/a.rs",    "range": [40, 80],  "message": "especially here: race between refresh and read?"},
+      {"path": "src/a.rs",    "range": [110, 130], "message": "is this recovery path reachable?"},
+      {"path": "src/b.rs",    "line": 12,          "message": "off-by-one at the boundary?"},
+      {"path": "docs/plan.md",                     "message": "does the migration section still match?"}
     ] }
   EOF
   ```
-  (`--request` is exclusive with `--for`/`--changed`; per-file `line`/`range`/`message` each optional.)
+  (`--request` is exclusive with `--for`/`--changed`; per-entry `line`/`range`/`message` each optional.)
 - `--round N` on follow-up rounds.
 
-**Always prefer a line/range plus a specific question over handing over a whole
-file** — that's the difference between "glance at this" and an actionable review.
+**Always prefer ranges with specific questions over whole-file entries.** For a
+file you want broadly reviewed *and* have a specific concern about, use both: a
+whole-file entry for the general question, plus a range entry for each targeted
+question. That's the difference between "glance at this" and an actionable review.
 
 When it returns, act on the **verdict**: `approve` → proceed (comments optional
 polish); `request_changes` → address every note, then consider another round;
