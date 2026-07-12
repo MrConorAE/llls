@@ -62,10 +62,11 @@ Launch as a **background task** so the conversation continues. Two input styles:
   ```
   (`--request` is exclusive with `--for`/`--changed`; per-entry `line`/`range`/`message` each optional.)
 - `--round N` on follow-up rounds.
-- `--amend` to correct an in-flight request without cancelling it: rewrites the
-  file list and messages in place, preserves the original ID (so the blocking
-  process still wakes up normally) and any draft comments the reviewer has already
-  left. Use this when you realise a path or line number was wrong after the
+- `--amend` to overwrite an in-flight request without cancelling it. **The new
+  file list completely replaces the old one — nothing is merged.** The original
+  ID, round, and timestamp are preserved (so the blocking process still wakes up
+  on the eventual review), and any draft comments the reviewer has already left
+  are untouched. Use when you realise a path or line number was wrong after the
   background task is already running:
   ```
   llls await-review --amend --request - <<'EOF'

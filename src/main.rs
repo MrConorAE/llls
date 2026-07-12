@@ -37,9 +37,10 @@ enum Cmd {
         /// from a file, or `-` for stdin. Mutually exclusive with --for/--changed.
         #[arg(long)]
         request: Option<String>,
-        /// Update an in-flight review request in place (same ID, no blocking).
-        /// Preserves draft comments; use to correct file paths or line numbers
-        /// after the original await-review is already running.
+        /// Overwrite an in-flight review request in place (same ID, no blocking).
+        /// The new file list completely replaces the old one — nothing is merged.
+        /// Preserves the original ID/round/timestamp and any draft comments.
+        /// Use to correct file paths or line numbers after the background task is running.
         #[arg(long)]
         amend: bool,
     },
