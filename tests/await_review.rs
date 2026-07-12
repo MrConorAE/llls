@@ -10,6 +10,7 @@ use std::time::Duration;
 fn await_review_returns_submitted_review_and_clears_state() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    std::fs::write(tmp.path().join("a.rs"), b"").unwrap();
     let llls = tmp.path().join(".llls");
 
     // Reviewer thread: wait for the request to exist, then write a matching review.
@@ -129,6 +130,7 @@ fn await_review_request_stdin_carries_per_file_messages() {
     use std::process::{Command, Stdio};
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    std::fs::write(tmp.path().join("a.rs"), b"").unwrap();
     let llls = tmp.path().join(".llls");
     let llls2 = llls.clone();
     let reviewer = std::thread::spawn(move || {
@@ -163,6 +165,22 @@ fn await_review_request_stdin_carries_per_file_messages() {
 }
 
 #[test]
+fn await_review_rejects_missing_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    // "ghost.rs" does not exist in the repo
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_llls"))
+        .args(["await-review", "--for", "ghost.rs", "--message", "look"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("not found"), "stderr: {stderr}");
+    assert!(stderr.contains("ghost.rs"), "stderr: {stderr}");
+}
+
+#[test]
 fn await_review_request_conflicts_with_for() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
@@ -181,6 +199,7 @@ fn await_review_request_keeps_multiple_entries_per_file() {
     use std::process::{Command, Stdio};
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    std::fs::write(tmp.path().join("a.rs"), b"").unwrap();
     let llls = tmp.path().join(".llls");
     let llls2 = llls.clone();
     let reviewer = std::thread::spawn(move || {

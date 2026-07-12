@@ -84,6 +84,20 @@ pub fn run(args: Args) -> Result<i32> {
         return Ok(1);
     }
 
+    let mut missing: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for t in &files {
+        if !repo_root.join(&t.path).exists() {
+            missing.insert(&t.path);
+        }
+    }
+    if !missing.is_empty() {
+        eprintln!("llls: file(s) not found in repository:");
+        for p in &missing {
+            eprintln!("  {p}");
+        }
+        return Ok(1);
+    }
+
     let request = Request {
         id: id.clone(),
         round: args.round,
