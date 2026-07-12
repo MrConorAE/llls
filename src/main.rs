@@ -37,6 +37,11 @@ enum Cmd {
         /// from a file, or `-` for stdin. Mutually exclusive with --for/--changed.
         #[arg(long)]
         request: Option<String>,
+        /// Update an in-flight review request in place (same ID, no blocking).
+        /// Preserves draft comments; use to correct file paths or line numbers
+        /// after the original await-review is already running.
+        #[arg(long)]
+        amend: bool,
     },
     /// Print and clear any review the developer pushed (ad-hoc), then exit.
     TakeReview {
@@ -52,8 +57,8 @@ fn main() -> anyhow::Result<()> {
             lsp::run();
             Ok(())
         }
-        Cmd::AwaitReview { files, changed, message, round, json, timeout, request } => {
-            let code = await_review::run(await_review::Args { files, changed, message, round, json, timeout, request })?;
+        Cmd::AwaitReview { files, changed, message, round, json, timeout, request, amend } => {
+            let code = await_review::run(await_review::Args { files, changed, message, round, json, timeout, request, amend })?;
             std::process::exit(code);
         }
         Cmd::TakeReview { json } => {

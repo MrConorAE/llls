@@ -20,6 +20,7 @@ pub struct Args {
     pub json: bool,
     pub timeout: Option<u64>,
     pub request: Option<String>,
+    pub amend: bool,
 }
 
 pub fn run(args: Args) -> Result<i32> {
@@ -27,17 +28,35 @@ pub fn run(args: Args) -> Result<i32> {
     let store = Store::discover(&cwd).context("llls must be run inside a git repository")?;
     store.ensure()?;
 
-    if store.read_request().is_some() {
-        eprintln!(
-            "llls: a review is already pending ({}). Submit or discard it in your editor first.",
-            store.request_path().display()
-        );
-        return Ok(1);
-    }
+    // --amend requires an existing in-flight request to update; normal mode requires none.
+    let existing = if args.amend {
+        match store.read_request() {
+            Some(r) => Some(r),
+            None => {
+                eprintln!("llls: --amend requires a pending review, but none was found.");
+                return Ok(1);
+            }
+        }
+    } else {
+        if store.read_request().is_some() {
+            eprintln!(
+                "llls: a review is already pending ({}). Submit or discard it in your editor first.",
+                store.request_path().display()
+            );
+            return Ok(1);
+        }
+        None
+    };
 
     let repo_root = store.repo_root();
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
-    let id = format!("r{}-{}", args.round, now.as_nanos());
+    // Amend: preserve the original ID and timestamp so the blocking await-review
+    // process still recognises the eventual review.json.
+    let (id, created_unix) = if let Some(ref e) = existing {
+        (e.id.clone(), e.created_unix)
+    } else {
+        (format!("r{}-{}", args.round, now.as_nanos()), now.as_secs())
+    };
 
     let (files, message): (Vec<crate::types::FileTarget>, String) = if let Some(req) = &args.request {
         if !args.files.is_empty() || args.changed.is_some() {
@@ -133,14 +152,27 @@ pub fn run(args: Args) -> Result<i32> {
         return Ok(1);
     }
 
+    // Amend: inherit round from the original; keep message if none supplied.
+    let round = existing.as_ref().map_or(args.round, |e| e.round);
+    let message = if message.is_empty() {
+        existing.as_ref().map_or_else(|| message.clone(), |e| e.message.clone())
+    } else {
+        message
+    };
+
     let request = Request {
         id: id.clone(),
-        round: args.round,
-        created_unix: now.as_secs(),
+        round,
+        created_unix,
         files,
         message,
     };
     store.write_request(&request)?;
+
+    if args.amend {
+        eprintln!("llls: request updated ({} file target(s))", request.files.len());
+        return Ok(0);
+    }
 
     let poll = Duration::from_secs(2);
     let timeout = args.timeout.map(Duration::from_secs);

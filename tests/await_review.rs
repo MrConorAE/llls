@@ -288,6 +288,141 @@ fn await_review_accepts_valid_in_bounds_targets() {
     assert!(!stderr.contains("invalid"), "stderr: {stderr}");
 }
 
+// ── amend tests ─────────────────────────────────────────────────────────────
+
+#[test]
+fn await_review_amend_fails_without_pending_request() {
+    let (tmp, _) = setup_repo_with_file(b"line1\nline2\n");
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_llls"))
+        .args(["await-review", "--amend", "--for", "a.rs", "--message", "x"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--amend requires a pending review"));
+}
+
+#[test]
+fn await_review_amend_updates_request_preserving_id_and_round() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    // 5 lines for both a.rs and b.rs
+    std::fs::write(tmp.path().join("a.rs"), b"1\n2\n3\n4\n5\n").unwrap();
+    std::fs::write(tmp.path().join("b.rs"), b"1\n2\n3\n4\n5\n").unwrap();
+    let llls_dir = tmp.path().join(".llls");
+    let llls2 = llls_dir.clone();
+
+    // Reviewer thread: waits for an amended request (b.rs present), then submits.
+    let reviewer = std::thread::spawn(move || {
+        let req_path = llls2.join("request.json");
+        // Wait until b.rs appears in the request (i.e. after amend).
+        for _ in 0..200 {
+            if let Ok(s) = std::fs::read_to_string(&req_path) {
+                let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+                if v["files"].as_array().unwrap().iter().any(|f| f["path"] == "b.rs") {
+                    let id = v["id"].as_str().unwrap();
+                    let t = llls2.join("review.json.tmp");
+                    std::fs::write(&t, serde_json::json!({"id":id,"verdict":"approve","comments":[]}).to_string()).unwrap();
+                    std::fs::rename(&t, llls2.join("review.json")).unwrap();
+                    return v["id"].as_str().unwrap().to_string();
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        panic!("amended request never appeared");
+    });
+
+    // Start original await-review (a.rs only).
+    let mut child = Command::new(env!("CARGO_BIN_EXE_llls"))
+        .args(["await-review", "--for", "a.rs", "--message", "initial"])
+        .current_dir(tmp.path())
+        .stdout(Stdio::piped()).stderr(Stdio::piped())
+        .spawn().unwrap();
+
+    // Wait until request.json appears, then read the original ID.
+    let req_path = llls_dir.join("request.json");
+    let original_id = loop {
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        if let Ok(s) = std::fs::read_to_string(&req_path) {
+            let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+            break v["id"].as_str().unwrap().to_string();
+        }
+    };
+
+    // Amend: swap to b.rs.
+    let amend_out = Command::new(env!("CARGO_BIN_EXE_llls"))
+        .args(["await-review", "--amend", "--for", "b.rs", "--message", "amended"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(amend_out.status.success(), "amend stderr: {}", String::from_utf8_lossy(&amend_out.stderr));
+
+    // The amended request must preserve the original ID.
+    let amended: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&req_path).unwrap()).unwrap();
+    assert_eq!(amended["id"].as_str().unwrap(), original_id, "ID must be preserved across amend");
+    assert!(amended["files"].as_array().unwrap().iter().any(|f| f["path"] == "b.rs"), "b.rs must be in amended request");
+
+    let review_id = reviewer.join().unwrap();
+    assert_eq!(review_id, original_id, "reviewer saw same ID");
+
+    // Original await-review should complete successfully.
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(), "await-review stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("verdict: approve"));
+}
+
+#[test]
+fn await_review_amend_inherits_message_when_none_supplied() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    std::fs::write(tmp.path().join("a.rs"), b"line1\n").unwrap();
+    // Write a request.json directly (no blocking process needed for this check).
+    let req = serde_json::json!({
+        "id": "r1-123", "round": 2, "created_unix": 1000,
+        "files": [{"path": "a.rs"}], "message": "original message"
+    });
+    std::fs::create_dir_all(tmp.path().join(".llls")).unwrap();
+    std::fs::write(tmp.path().join(".llls/request.json"), req.to_string()).unwrap();
+
+    // Amend without --message; should inherit "original message".
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_llls"))
+        .args(["await-review", "--amend", "--for", "a.rs"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let updated: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tmp.path().join(".llls/request.json")).unwrap()
+    ).unwrap();
+    assert_eq!(updated["id"], "r1-123");
+    assert_eq!(updated["round"], 2);
+    assert_eq!(updated["message"], "original message");
+}
+
+#[test]
+fn await_review_amend_validation_still_applies() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    std::fs::write(tmp.path().join("a.rs"), b"line1\n").unwrap();
+    let req = serde_json::json!({
+        "id": "r1-999", "round": 1, "created_unix": 1000,
+        "files": [{"path": "a.rs"}], "message": ""
+    });
+    std::fs::create_dir_all(tmp.path().join(".llls")).unwrap();
+    std::fs::write(tmp.path().join(".llls/request.json"), req.to_string()).unwrap();
+
+    // Amend with a missing file — should fail validation.
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_llls"))
+        .args(["await-review", "--amend", "--for", "ghost.rs"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("not found"));
+}
+
 #[test]
 fn await_review_request_conflicts_with_for() {
     let tmp = tempfile::tempdir().unwrap();
