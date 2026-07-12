@@ -10,7 +10,8 @@ use std::time::Duration;
 fn await_review_returns_submitted_review_and_clears_state() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
-    std::fs::write(tmp.path().join("a.rs"), b"").unwrap();
+    // 5 lines so line 3 passes bounds check
+    std::fs::write(tmp.path().join("a.rs"), b"1\n2\n3\n4\n5\n").unwrap();
     let llls = tmp.path().join(".llls");
 
     // Reviewer thread: wait for the request to exist, then write a matching review.
@@ -130,7 +131,8 @@ fn await_review_request_stdin_carries_per_file_messages() {
     use std::process::{Command, Stdio};
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
-    std::fs::write(tmp.path().join("a.rs"), b"").unwrap();
+    // 5 lines so range [1,5] passes bounds check
+    std::fs::write(tmp.path().join("a.rs"), b"1\n2\n3\n4\n5\n").unwrap();
     let llls = tmp.path().join(".llls");
     let llls2 = llls.clone();
     let reviewer = std::thread::spawn(move || {
@@ -180,6 +182,112 @@ fn await_review_rejects_missing_file() {
     assert!(stderr.contains("ghost.rs"), "stderr: {stderr}");
 }
 
+fn setup_repo_with_file(content: &[u8]) -> (tempfile::TempDir, std::path::PathBuf) {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+    let path = tmp.path().join("a.rs");
+    std::fs::write(&path, content).unwrap();
+    (tmp, path)
+}
+
+fn run_for(dir: &std::path::Path, target: &str) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_llls"))
+        .args(["await-review", "--for", target, "--message", "check"])
+        .current_dir(dir)
+        .output()
+        .unwrap()
+}
+
+fn run_request(dir: &std::path::Path, json: &str) -> std::process::Output {
+    use std::io::Write;
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_llls"))
+        .args(["await-review", "--request", "-"])
+        .current_dir(dir)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(json.as_bytes()).unwrap();
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn await_review_rejects_line_zero() {
+    let (tmp, _) = setup_repo_with_file(b"line1\nline2\n");
+    let out = run_for(tmp.path(), "a.rs:0");
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("1-indexed"), "stderr: {stderr}");
+}
+
+#[test]
+fn await_review_rejects_range_zero() {
+    let (tmp, _) = setup_repo_with_file(b"line1\nline2\n");
+    let out = run_request(tmp.path(), r#"{"files":[{"path":"a.rs","range":[0,2]}]}"#);
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("1-indexed"), "stderr: {stderr}");
+}
+
+#[test]
+fn await_review_rejects_inverted_range() {
+    let (tmp, _) = setup_repo_with_file(b"line1\nline2\nline3\n");
+    let out = run_request(tmp.path(), r#"{"files":[{"path":"a.rs","range":[5,2]}]}"#);
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("inverted"), "stderr: {stderr}");
+}
+
+#[test]
+fn await_review_rejects_line_out_of_bounds() {
+    let (tmp, _) = setup_repo_with_file(b"line1\nline2\n");
+    let out = run_for(tmp.path(), "a.rs:99");
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("out of bounds"), "stderr: {stderr}");
+}
+
+#[test]
+fn await_review_rejects_range_out_of_bounds() {
+    let (tmp, _) = setup_repo_with_file(b"line1\nline2\n");
+    let out = run_for(tmp.path(), "a.rs:1-99");
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("out of bounds"), "stderr: {stderr}");
+}
+
+#[test]
+fn await_review_rejects_both_line_and_range() {
+    let (tmp, _) = setup_repo_with_file(b"line1\nline2\n");
+    let out = run_request(tmp.path(), r#"{"files":[{"path":"a.rs","line":1,"range":[1,2]}]}"#);
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("not both"), "stderr: {stderr}");
+}
+
+#[test]
+fn await_review_accepts_valid_in_bounds_targets() {
+    use std::io::Write;
+    // This test just checks validation passes — doesn't need a reviewer thread
+    // since the process will block on the review; we abort via timeout not tested here.
+    // Instead verify exit is NOT 1 by checking stderr is free of validation errors.
+    // We use --timeout 0 which isn't a flag; just verify the request.json is written.
+    // Simplest: write 5 lines and check --for line 5 doesn't immediately fail.
+    let (tmp, _) = setup_repo_with_file(b"1\n2\n3\n4\n5\n");
+    // Spawn and immediately kill — we only care that validation passes (no exit code 1).
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_llls"))
+        .args(["await-review", "--for", "a.rs:5", "--message", "check", "--timeout", "1"])
+        .current_dir(tmp.path())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains("out of bounds"), "stderr: {stderr}");
+    assert!(!stderr.contains("invalid"), "stderr: {stderr}");
+}
+
 #[test]
 fn await_review_request_conflicts_with_for() {
     let tmp = tempfile::tempdir().unwrap();
@@ -199,7 +307,8 @@ fn await_review_request_keeps_multiple_entries_per_file() {
     use std::process::{Command, Stdio};
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
-    std::fs::write(tmp.path().join("a.rs"), b"").unwrap();
+    // 50 lines so range [10,20] and line 50 both pass bounds check
+    std::fs::write(tmp.path().join("a.rs"), (1u32..=50).map(|n| format!("{n}\n")).collect::<String>().as_bytes()).unwrap();
     let llls = tmp.path().join(".llls");
     let llls2 = llls.clone();
     let reviewer = std::thread::spawn(move || {

@@ -84,16 +84,51 @@ pub fn run(args: Args) -> Result<i32> {
         return Ok(1);
     }
 
-    let mut missing: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    let mut errors: Vec<String> = Vec::new();
+    let mut not_found: std::collections::HashSet<String> = std::collections::HashSet::new();
     for t in &files {
-        if !repo_root.join(&t.path).exists() {
-            missing.insert(&t.path);
+        let abs = repo_root.join(&t.path);
+        if !abs.exists() {
+            if not_found.insert(t.path.clone()) {
+                errors.push(format!("{}: file not found", t.path));
+            }
+            continue; // skip further checks — file may not be readable
+        }
+        if t.line.is_some() && t.range.is_some() {
+            errors.push(format!("{}: specify line or range, not both", t.path));
+        }
+        if t.line == Some(0) {
+            errors.push(format!("{}: line 0 is invalid (lines are 1-indexed)", t.path));
+        }
+        if matches!(t.range, Some([0, _]) | Some([_, 0])) {
+            errors.push(format!("{}: range values are 1-indexed (0 is invalid)", t.path));
+        }
+        if let Some([s, e]) = t.range {
+            if s > e {
+                errors.push(format!("{}: range {s}-{e} is inverted (start > end)", t.path));
+                continue; // bounds check would be misleading for an inverted range
+            }
+        }
+        // Bounds check — best-effort, skip silently for binary/unreadable files.
+        if t.line.is_some() || t.range.is_some() {
+            if let Ok(content) = std::fs::read_to_string(&abs) {
+                let n = content.lines().count() as u32;
+                if let Some(line) = t.line {
+                    if line > n {
+                        errors.push(format!("{}: line {line} out of bounds (file has {n} line(s))", t.path));
+                    }
+                }
+                if let Some([s, e]) = t.range {
+                    if e > n {
+                        errors.push(format!("{}: range {s}-{e} out of bounds (file has {n} line(s))", t.path));
+                    }
+                }
+            }
         }
     }
-    if !missing.is_empty() {
-        eprintln!("llls: file(s) not found in repository:");
-        for p in &missing {
-            eprintln!("  {p}");
+    if !errors.is_empty() {
+        for e in &errors {
+            eprintln!("llls: {e}");
         }
         return Ok(1);
     }
